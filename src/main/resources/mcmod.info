@@ -1,0 +1,23 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "TakoRender Demo.",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+    "url": "https://github.com/XSana/TakoRenderDemo",
+		"updateUrl": "",
+    "authorList": [
+      "XSana"
+    ],
+		"credits": "",
+		"logoFile": "",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": [],
+		"dependencies": [],
+		"dependants": [],
+		"useDependencyInformation": false
+	}]
+}
