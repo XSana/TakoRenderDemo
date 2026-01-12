@@ -51,7 +51,7 @@ public class TileEntityBlackHoleRenderer extends TileEntitySpecialRenderer {
     private int texTonemapped = -1;
 
     private static final float RENDER_HEIGHT_OFFSET = 3.0f;
-    private static final float BLACKHOLE_SCALE = 0.5f; // 增大黑洞尺寸
+    private static final float BLACKHOLE_SCALE = 1.5f; // 黑洞尺寸缩放 (值越大引力场越小)
     private static final int BLOOM_ITERATIONS = 6;
     private static final float BLOOM_STRENGTH = 0.3f; // 增强bloom效果
 
@@ -147,13 +147,28 @@ public class TileEntityBlackHoleRenderer extends TileEntitySpecialRenderer {
         // 保存MC的FBO
         int mcFBO = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
 
+        // 获取MC framebuffer的颜色纹理
+        int mcBackgroundTexture = mc.getFramebuffer().framebufferTexture;
+
         // 保存OpenGL状态
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
 
         // === 后处理管线 ===
 
-        // 1. 渲染黑洞到FBO
-        renderBlackhole(time, relX, relY, relZ, dirX, dirY, dirZ, upX, upY, upZ, mc.gameSettings.fovSetting);
+        // 1. 渲染黑洞到FBO (传入MC背景纹理)
+        renderBlackhole(
+            time,
+            relX,
+            relY,
+            relZ,
+            dirX,
+            dirY,
+            dirZ,
+            upX,
+            upY,
+            upZ,
+            mc.gameSettings.fovSetting,
+            mcBackgroundTexture);
 
         // 2. 提取高亮度像素
         renderBrightnessPass();
@@ -245,7 +260,7 @@ public class TileEntityBlackHoleRenderer extends TileEntitySpecialRenderer {
     }
 
     private void renderBlackhole(float time, float camX, float camY, float camZ, float dirX, float dirY, float dirZ,
-        float upX, float upY, float upZ, float fov) {
+        float upX, float upY, float upZ, float fov, int mcBackgroundTexture) {
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboBlackhole);
         GL11.glViewport(0, 0, renderWidth, renderHeight);
         GL11.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -284,6 +299,11 @@ public class TileEntityBlackHoleRenderer extends TileEntitySpecialRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE1);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, colorMapTexture);
         ShaderHelper.setUniform1i(blackholeShader, "colorMap", 1);
+
+        // 绑定MC背景纹理
+        GL13.glActiveTexture(GL13.GL_TEXTURE2);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, mcBackgroundTexture);
+        ShaderHelper.setUniform1i(blackholeShader, "mcBackground", 2);
 
         RenderHelper.renderQuad();
         GL20.glUseProgram(0);

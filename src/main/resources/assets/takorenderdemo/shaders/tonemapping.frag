@@ -40,6 +40,4 @@ void main() {
     // Gamma correction
     fragColor.rgb = pow(fragColor.rgb, vec3(1.0 / gamma));
   }
-
-  // 保持原始alpha不变
 }

@@ -13,6 +13,7 @@ uniform float mouseY;
 uniform float time; // time elapsed in seconds
 uniform samplerCube galaxy;
 uniform sampler2D colorMap;
+uniform sampler2D mcBackground; // MC场景背景纹理
 
 uniform float frontView = 0.0;
 uniform float topView = 0.0;
@@ -326,7 +327,31 @@ void adiskColor(vec3 pos, inout vec3 color, inout float alpha, inout float accum
   accumulatedAlpha += contributionLuminance * 3.0;
 }
 
-vec4 traceColor(vec3 pos, vec3 dir) {
+// 将世界空间方向转换回屏幕UV坐标
+vec2 worldDirToScreenUV(vec3 worldDir, mat3 viewMatrix, float fov) {
+  // 将世界方向转换到相机空间
+  mat3 invView = transpose(viewMatrix); // 正交矩阵的逆是转置
+  vec3 camDir = invView * worldDir;
+
+  // 如果方向指向相机后方，返回无效UV
+  if (camDir.z <= 0.0) {
+    return vec2(-1.0);
+  }
+
+  // 投影到屏幕空间
+  float tanHalfFov = tan(radians(fov) * 0.5);
+  vec2 screenPos = camDir.xy / (camDir.z * tanHalfFov);
+
+  // 考虑宽高比
+  screenPos.x /= resolution.x / resolution.y;
+
+  // 转换到UV坐标 [0, 1]
+  vec2 uv = screenPos + 0.5;
+
+  return uv;
+}
+
+vec4 traceColor(vec3 pos, vec3 dir, mat3 viewMatrix, float fov) {
   vec3 color = vec3(0.0);
   float alpha = 1.0;
   float accumulatedAlpha = 0.0;
@@ -334,9 +359,14 @@ vec4 traceColor(vec3 pos, vec3 dir) {
   float STEP_SIZE = 0.1;
   dir *= STEP_SIZE;
 
+  // 保存初始方向用于后续计算
+  vec3 originalDir = normalize(dir);
+
   // Initial values
   vec3 h = cross(pos, dir);
   float h2 = dot(h, h);
+
+  bool hitEventHorizon = false;
 
   for (int i = 0; i < 300; i++) {
     if (renderBlackHole > 0.5) {
@@ -348,7 +378,8 @@ vec4 traceColor(vec3 pos, vec3 dir) {
 
       // Reach event horizon - 事件视界内是纯黑的
       if (dot(pos, pos) < 1.0) {
-        return vec4(0.0, 0.0, 0.0, 1.0); // 黑洞中心纯黑且完全不透明
+        hitEventHorizon = true;
+        break;
       }
 
       float minDistance = INFINITY;
@@ -379,14 +410,38 @@ vec4 traceColor(vec3 pos, vec3 dir) {
     pos += dir;
   }
 
-  // Sample skybox color - 如果启用透明背景，则不采样天空
+  // 事件视界内是纯黑的
+  if (hitEventHorizon) {
+    return vec4(0.0, 0.0, 0.0, 1.0);
+  }
+
+  // 获取弯曲后的光线方向
+  vec3 bentDir = normalize(dir);
+
+  // 采样背景
   if (transparentBackground > 0) {
-    // 返回累积的不透明度，clamp到0-1范围
-    float finalAlpha = clamp(accumulatedAlpha, 0.0, 1.0);
-    return vec4(color, finalAlpha);
+    // 将弯曲后的方向转换为屏幕UV
+    vec2 bentUV = worldDirToScreenUV(bentDir, viewMatrix, fov);
+
+    // 检查UV是否有效
+    if (bentUV.x >= 0.0 && bentUV.x <= 1.0 && bentUV.y >= 0.0 && bentUV.y <= 1.0) {
+      // 采样MC背景纹理（使用弯曲后的UV）
+      vec3 bgColor = texture(mcBackground, bentUV).rgb;
+      // 混合吸积盘颜色和背景
+      float diskAlpha = clamp(accumulatedAlpha, 0.0, 1.0);
+      color = color + bgColor * (1.0 - diskAlpha);
+      return vec4(color, 1.0);
+    } else {
+      // UV超出范围，使用cubemap或返回吸积盘颜色
+      vec3 bgColor = texture(galaxy, bentDir).rgb;
+      float diskAlpha = clamp(accumulatedAlpha, 0.0, 1.0);
+      color = color + bgColor * (1.0 - diskAlpha);
+      return vec4(color, 1.0);
+    }
   } else {
-    dir = rotateVector(dir, vec3(0.0, 1.0, 0.0), time);
-    color += texture(galaxy, dir).rgb * alpha;
+    // 原始模式：使用cubemap
+    vec3 rotatedDir = rotateVector(bentDir, vec3(0.0, 1.0, 0.0), time);
+    color += texture(galaxy, rotatedDir).rgb * alpha;
     return vec4(color, 1.0);
   }
 }
@@ -432,5 +487,5 @@ void main() {
   vec3 pos = cameraPos;
   dir = view * dir;
 
-  fragColor = traceColor(pos, dir);
+  fragColor = traceColor(pos, dir, view, fov);
 }
